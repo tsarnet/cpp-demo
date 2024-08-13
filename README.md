@@ -1,2 +1,2 @@
-# TSAR C++ SDK
+# TSAR C++ Demo
  ![banner](/banner.png)
