@@ -5,43 +5,69 @@
 #include <thread>
 #include <tsar.hpp>
 
+// You should have gotten these values after creating your app
+// You can find them in your app's configuration settings
 constexpr auto app_id = "f911842b-5b3d-4c59-b5d1-4adb8f71557b";
 constexpr auto client_key =
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvJrwPvdeDUcV8Qr02tzgFrp+8qfCV/vG1HcQJYYV8u5vYUfGABMAYT0qOQltXEX9DTcB2fzLfwQnl7yiAaNruQ==";
 
-#undef max
+// Basic function to format TSAR errors
+static void error( const std::string_view title, const tsar::error& err ) noexcept
+{
+    std::cerr << "[AUTH] " << title << ": " << err.what() << std::endl;
+}
 
 int main()
 {
-    try
+    // This will create a new client & perform a hash check on your binary
+    const auto client = tsar::client::create( app_id, client_key );
+
+    if ( !client )
     {
-        const auto client = tsar::client::create( app_id, client_key, "test" );
-
-        const auto& subscription = client->get_subscription();
-
-        std::println( std::cout, "[+] Authentication success, welcome {}!", subscription.user.username.value_or( "N/A" ) );
-        std::println( std::cout, " *  subscription id: {}", subscription.id );
-        std::println( std::cout, " *  subscription expires: {}", subscription.expires.value_or( std::chrono::system_clock::time_point::max() ) );
-        std::println( std::cout, " *  user id: {}", subscription.id );
-        std::println( std::cout, " *  username: {}", subscription.user.username.value_or( "N/A" ) );
-        std::println( std::cout, " *  avatar: {}", subscription.user.avatar.value_or( "N/A" ) );
-
-        while ( const auto result = client->validate() )
-        {
-            std::println( std::cout, "[+] Heartbeat success:" );
-            std::println( std::cout, " *  hwid: {}", result.value().hwid );
-            std::println( std::cout, " *  timestamp: {}", result.value().timestamp );
-
-            std::this_thread::sleep_for( std::chrono::seconds( 5 ) );
-        }
-
-        std::println( std::cout, "[-] Heartbeat failed. Session has expired." );
-    }
-    catch ( const tsar::error& e )
-    {
-        std::cerr << "[-] Error [" << e.code() << "]: " << e.what() << std::endl;
+        error( "Failed to create client", client.error() );
         return 1;
     }
 
-    return 0;
+    std::println( std::cout, "[AUTH] Attempting to authenticate client..." );
+
+    // Check if user is authorized. By default the user's browser opens when auth fails. Passing `false` as an initial argument disables that.
+    auto user = client->authenticate();
+
+    // If they aren't authorized, continue to check until they've authenticated themselves in their browser.
+    while ( !user )
+    {
+        // Only continue the loop if the error type is "Unauthorized".
+        if ( user.error() != tsar::error_code_t::unauthorized_t )
+        {
+            error( "Failed to authenticate", user.error() );
+            return 1;
+        }
+
+        std::this_thread::sleep_for( std::chrono::seconds( 3 ) );  // Keep a delay of at least 3 seconds to prevent rate-limiting.
+
+        // Make sure to use false for any authenticate() function that's inside a loop, or else the browser will keep opening nonstop.
+        user = client->authenticate( false );
+    }
+
+    // At this point the user is authenticated
+    std::println( std::cout, "[AUTH] Successfully authenticated." );
+    std::println( std::cout, "[AUTH] Welcome, {}.", user->name.value_or( user->id ) );
+
+    // Start a heartbeat loop to continue checking if the user is authorized (we recommend running this in a background thread)
+    //
+    // **MAKE SURE THE LOOP RUNS ONLY ONCE EVERY 10 - 30 SECONDS**
+    // Otherwise, your users might get rate-limited.
+    //
+    // Using a heartbeat thread will allow you to delete user sessions and have them be kicked off of your software live.
+    // Additionally, if their subscription expires they will also be kicked during the heartbeat check.
+    tsar::result_t< void > status;
+
+    while ( status = user->heartbeat() )
+    {
+        std::println( std::cout, "[AUTH] Heartbeat success." );
+        std::this_thread::sleep_for( std::chrono::seconds( 20 ) );
+    }
+
+    error( "Heartbeat failed", status.error() );
+    return 1;
 }

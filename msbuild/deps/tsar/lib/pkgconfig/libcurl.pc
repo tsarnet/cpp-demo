@@ -32,8 +32,8 @@ supported_features="alt-svc AsynchDNS HSTS HTTPS-proxy IPv6 Kerberos Largefile l
 Name: libcurl
 URL: https://curl.se/
 Description: Library to transfer files with ftp, http, etc.
-Version: 8.9.1-DEV
+Version: 8.10.1-DEV
 
-Libs: "-L${libdir}" -llibcurl -lws2_32 -lbcrypt -lzlib -ladvapi32 -lcrypt32
+Libs: "-L${libdir}" -llibcurl -lzlib -lws2_32 -lbcrypt -ladvapi32 -lcrypt32
 Requires:  
-Cflags: "-I${includedir}" -DCURL_STATICLIB
+Cflags: "-I${includedir}" -DCURL_STATICLIB -DCURL_STATICLIB
